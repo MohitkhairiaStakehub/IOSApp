@@ -16,7 +16,7 @@ struct StakehubApp: App {
             if isActive {
                 LaunchScreen()
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                             isActive = false
                         }
                     }
