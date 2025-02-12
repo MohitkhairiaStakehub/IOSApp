@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import WebKit
+@preconcurrency import WebKit
 
 struct WebView: UIViewRepresentable {
     let urlString: String
@@ -14,28 +14,39 @@ struct WebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let webViewConfig = WKWebViewConfiguration()
 
-        // ✅ Enable JavaScript using recommended method
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
         webViewConfig.defaultWebpagePreferences = preferences
 
-        webViewConfig.allowsInlineMediaPlayback = true // Allow inline videos
-        webViewConfig.mediaTypesRequiringUserActionForPlayback = [] // Auto-play media
+        webViewConfig.allowsInlineMediaPlayback = true
+        webViewConfig.mediaTypesRequiringUserActionForPlayback = []
 
         let webView = WKWebView(frame: .zero, configuration: webViewConfig)
-        webView.allowsBackForwardNavigationGestures = true // Enable gestures
-        webView.navigationDelegate = context.coordinator // Handle loading, errors, navigation
-        if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+        webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = context.coordinator
+
+        // ✅ Force High-Resolution Rendering
+        webView.contentScaleFactor = UIScreen.main.scale
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.contentScaleFactor = UIScreen.main.scale
+
+        if let url = URL(string: urlString) {
             var request = URLRequest(url: url)
-                    request.cachePolicy = .reloadIgnoringLocalCacheData
-                    request.timeoutInterval = 30
-                    webView.load(request)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 30
+            webView.load(request)
         } else {
             print("Invalid URL: \(urlString)")
         }
-//        if let url = URL(string: urlString) {
-//            webView.load(URLRequest(url: url))
-//        }
+
+        // ✅ Add Pull-to-Refresh
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(context.coordinator, action: #selector(Coordinator.refreshWebView(_:)), for: .valueChanged)
+        webView.scrollView.refreshControl = refreshControl
+
+        // ✅ Store WebView in Coordinator
+        context.coordinator.webView = webView
 
         return webView
     }
@@ -48,6 +59,7 @@ struct WebView: UIViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebView
+        var webView: WKWebView?
 
         init(_ parent: WebView) {
             self.parent = parent
@@ -59,6 +71,26 @@ struct WebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             print("Failed to load: \(error.localizedDescription)")
-        }	
+        }
+
+        // ✅ Handle External Links
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url {
+                       let host = url.host
+                       if host != "testfrontend.stakehub.in" { // Change this to your domain
+                           UIApplication.shared.open(url) // Opens external links in Safari
+                           decisionHandler(.cancel)
+                           return
+                       }
+                   }
+                   decisionHandler(.allow) // ✅ Allow internal links
+        }
+
+        @objc func refreshWebView(_ refreshControl: UIRefreshControl) {
+            webView?.reloadFromOrigin()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                refreshControl.endRefreshing()
+            }
+        }
     }
 }
