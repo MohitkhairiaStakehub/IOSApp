@@ -1,10 +1,3 @@
-//
-//  WebView.swift.swift
-//  Stakehub
-//
-//  Created by Stakehub Dev on 10/02/25.
-//
-
 import SwiftUI
 @preconcurrency import WebKit
 
@@ -22,8 +15,10 @@ struct WebView: UIViewRepresentable {
         webViewConfig.mediaTypesRequiringUserActionForPlayback = []
 
         let webView = WKWebView(frame: .zero, configuration: webViewConfig)
-        webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.configuration.websiteDataStore = WKWebsiteDataStore.default()
 
         // ✅ Force High-Resolution Rendering
         webView.contentScaleFactor = UIScreen.main.scale
@@ -42,11 +37,8 @@ struct WebView: UIViewRepresentable {
 
         // ✅ Add Pull-to-Refresh
         let refreshControl = UIRefreshControl()
-        refreshControl.addTarget(context.coordinator, action: #selector(Coordinator.refreshWebView(_:)), for: .valueChanged)
+        refreshControl.addTarget(context.coordinator, action: #selector(Coordinator.refreshWebView), for: .valueChanged)
         webView.scrollView.refreshControl = refreshControl
-
-        // ✅ Store WebView in Coordinator
-        context.coordinator.webView = webView
 
         return webView
     }
@@ -57,8 +49,9 @@ struct WebView: UIViewRepresentable {
         return Coordinator(self)
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: WebView
+        // Optionally, keep a reference to the web view if needed.
         var webView: WKWebView?
 
         init(_ parent: WebView) {
@@ -73,19 +66,64 @@ struct WebView: UIViewRepresentable {
             print("Failed to load: \(error.localizedDescription)")
         }
 
-        // ✅ Handle External Links
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if let url = navigationAction.request.url {
-                       let host = url.host
-                       if host != "testfrontend.stakehub.in" { // Change this to your domain
-                           UIApplication.shared.open(url) // Opens external links in Safari
-                           decisionHandler(.cancel)
-                           return
-                       }
-                   }
-                   decisionHandler(.allow) // ✅ Allow internal links
+        // Allow all navigation actions.
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(.allow)
+        }
+        
+        // Handle new window requests (e.g., target="_blank")
+        func webView(_ webView: WKWebView,
+                     createWebViewWith configuration: WKWebViewConfiguration,
+                     for navigationAction: WKNavigationAction,
+                     windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if navigationAction.targetFrame == nil {
+                webView.load(navigationAction.request)
+            }
+            return nil
         }
 
+        // Handle PDF Downloads (unchanged)
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationResponse: WKNavigationResponse,
+                     decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            guard let url = navigationResponse.response.url else {
+                decisionHandler(.allow)
+                return
+            }
+
+            let mimeType = navigationResponse.response.mimeType
+            if mimeType == "application/pdf" {
+                print("Downloading PDF from: \(url)")
+                DispatchQueue.global(qos: .background).async {
+                    if let pdfData = try? Data(contentsOf: url) {
+                        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("downloaded.pdf")
+                        do {
+                            try pdfData.write(to: tempURL)
+                            DispatchQueue.main.async {
+                                self.presentShareSheet(fileURL: tempURL)
+                            }
+                        } catch {
+                            print("Error saving PDF: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        // Present the share sheet for PDFs.
+        private func presentShareSheet(fileURL: URL) {
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = scene.windows.first {
+                let activityViewController = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+                window.rootViewController?.present(activityViewController, animated: true, completion: nil)
+            }
+        }
+       // Pull-to-Refresh function.
         @objc func refreshWebView(_ refreshControl: UIRefreshControl) {
             webView?.reloadFromOrigin()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
