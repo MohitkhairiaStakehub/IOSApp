@@ -12,7 +12,7 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
-            WebViewWrapper(webView: $webView, urlString: "https://testfrontend.stakehub.in")
+            WebViewWrapper(webView: $webView, urlString: "https://www.stakehub.in")
         }
     }
 }
