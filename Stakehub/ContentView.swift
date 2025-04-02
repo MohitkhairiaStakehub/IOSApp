@@ -8,11 +8,11 @@ import SwiftUI
 @preconcurrency import WebKit
 
 struct ContentView: View {
-    @State private var webView = WKWebView()
+    @StateObject private var webViewStore = WebViewStore()
     
     var body: some View {
         VStack {
-            WebViewWrapper(webView: $webView, urlString: "https://www.stakehub.in")
+            WebViewWrapper(webView: $webViewStore.webView, urlString: "https://www.stakehub.in")
         }
     }
 }

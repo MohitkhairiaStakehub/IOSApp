@@ -2,6 +2,7 @@ import SwiftUI
 @preconcurrency import WebKit
 
 struct WebView: UIViewRepresentable {
+    @Binding var webView: WKWebView
     let urlString: String
 
     func makeUIView(context: Context) -> WKWebView {
@@ -14,11 +15,11 @@ struct WebView: UIViewRepresentable {
         webViewConfig.allowsInlineMediaPlayback = true
         webViewConfig.mediaTypesRequiringUserActionForPlayback = []
 
-        let webView = WKWebView(frame: .zero, configuration: webViewConfig)
+//        let webView = WKWebView(frame: .zero, configuration: webViewConfig)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
-        webView.configuration.websiteDataStore = WKWebsiteDataStore.default()
+//        webView.configuration.websiteDataStore = WKWebsiteDataStore.default()
 
         // ✅ Force High-Resolution Rendering
         webView.contentScaleFactor = UIScreen.main.scale
@@ -26,7 +27,7 @@ struct WebView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.contentScaleFactor = UIScreen.main.scale
 
-        if let url = URL(string: urlString) {
+        if let url = URL(string: urlString), webView.url == nil {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.timeoutInterval = 30
@@ -52,7 +53,7 @@ struct WebView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: WebView
         // Optionally, keep a reference to the web view if needed.
-        var webView: WKWebView?
+//        var webView: WKWebView?
 
         init(_ parent: WebView) {
             self.parent = parent
@@ -125,7 +126,7 @@ struct WebView: UIViewRepresentable {
         }
        // Pull-to-Refresh function.
         @objc func refreshWebView(_ refreshControl: UIRefreshControl) {
-            webView?.reloadFromOrigin()
+            parent.webView.reloadFromOrigin()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 refreshControl.endRefreshing()
             }
