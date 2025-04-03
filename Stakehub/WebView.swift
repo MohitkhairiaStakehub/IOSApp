@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import SafariServices
 @preconcurrency import WebKit
 
 struct WebView: UIViewRepresentable {
@@ -49,12 +51,28 @@ struct WebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         return Coordinator(self)
     }
+    
+    class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
+        private let completion: ([URL]?) -> Void
+
+        init(completion: @escaping ([URL]?) -> Void) {
+            self.completion = completion
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            completion(urls)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            completion(nil)
+        }
+    }
 
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: WebView
         // Optionally, keep a reference to the web view if needed.
 //        var webView: WKWebView?
-
+        var documentPickerDelegate: DocumentPickerDelegate?
         init(_ parent: WebView) {
             self.parent = parent
         }
@@ -84,7 +102,32 @@ struct WebView: UIViewRepresentable {
             }
             return nil
         }
+       
+        func webView(_ webView: WKWebView,
+                     runOpenPanelWith parameters: Any,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping ([URL]?) -> Void) {
 
+            if #available(iOS 14.0, *),
+               let panelParams = parameters as? NSObject,
+               let allowsMultipleSelection = panelParams.value(forKey: "allowsMultipleSelection") as? Bool {
+
+                let documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+                documentPicker.allowsMultipleSelection = allowsMultipleSelection
+
+                let pickerDelegate = DocumentPickerDelegate(completion: completionHandler)
+                self.documentPickerDelegate = pickerDelegate
+                documentPicker.delegate = pickerDelegate
+
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let rootVC = scene.windows.first?.rootViewController {
+                    rootVC.present(documentPicker, animated: true)
+                }
+            } else {
+                completionHandler(nil)
+            }
+        }
+        
         // Handle PDF Downloads (unchanged)
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationResponse: WKNavigationResponse,

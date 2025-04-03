@@ -15,8 +15,14 @@
         <true/>
     </dict>
 
-    <!-- ✅ Add this key to indicate that the app does not use prohibited encryption -->
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+
+    <!-- 📸 Permissions for file uploads -->
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to the camera for uploading photos.</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs access to your photo library to upload images.</string>
 </dict>
 </plist>
