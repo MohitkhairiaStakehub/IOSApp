@@ -8,12 +8,42 @@ import SwiftUI
 @preconcurrency import WebKit
 
 struct ContentView: View {
-    @StateObject private var webViewStore = WebViewStore()
+    @EnvironmentObject var webViewStore: WebViewStore
+    @EnvironmentObject var deepLink: DeepLinkManager
     
     var body: some View {
         VStack {
-            WebViewWrapper(webView: $webViewStore.webView, urlString: "https://www.stakehub.in")
+            WebViewWrapper(webView: $webViewStore.webView, urlString: "https://testfrontend.stakehub.in")
         }
+         // ➊ Handle warm/foreground taps
+        .onReceive(NotificationCenter.default.publisher(for: .openDeepLink)) { note in
+            if let url = note.object as? URL {
+                webViewStore.webView.load(URLRequest(url: url))
+            }
+        }
+        // ➋ Handle cold-start case (event may have fired before this view existed)
+        .onAppear {
+            if let url = deepLink.pendingURL {
+                webViewStore.webView.load(URLRequest(url: url))
+                deepLink.pendingURL = nil // consume it
+            }
+        }
+        // ➌ FCM token to page
+        .onReceive(NotificationCenter.default.publisher(for: .fcmTokenUpdated)) { note in
+            guard let token = note.object as? String else { return }
+            let js = """
+            window.__fcm_token = \(jsonString(token));
+            window.dispatchEvent(new CustomEvent('fcm-token-ready', { detail: { platform: 'ios', token: \(jsonString(token)) } }));
+            """
+            webViewStore.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    // Safely quote a Swift string into JS as JSON
+    private func jsonString(_ s: String) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: [s])
+        let raw = String(data: data, encoding: .utf8)! // -> ["actual"]
+        return String(raw.dropFirst().dropLast())      // -> "actual"
     }
 }
 
@@ -22,10 +52,10 @@ struct WebViewWrapper: UIViewRepresentable {
     let urlString: String
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let webView = webView
         webView.navigationDelegate = context.coordinator // Set delegate
         
-        if let url = URL(string: urlString) {
+        if let url = URL(string: urlString),   webView.url == nil  {
             webView.load(URLRequest(url: url))
         }
         
@@ -54,7 +84,7 @@ struct WebViewWrapper: UIViewRepresentable {
             refreshControl.endRefreshing()
         }
         
-        // MARK: - Handle External Links        
+        // MARK: - Handle External Links
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             print("URL Clicked: \(navigationAction.request.url?.absoluteString ?? "Unknown")")
             
@@ -62,6 +92,12 @@ struct WebViewWrapper: UIViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
+            let kick = """
+                if (window.__fcm_token) {
+                  window.dispatchEvent(new CustomEvent('fcm-token-ready', { detail: { platform: 'ios', token: window.__fcm_token } }));
+                }
+                """
+                webView.evaluateJavaScript(kick, completionHandler: nil)
             
             let urlString = url.absoluteString
 

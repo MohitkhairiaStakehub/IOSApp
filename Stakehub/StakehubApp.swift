@@ -6,11 +6,16 @@
 //
 
 import SwiftUI
+import FirebaseCore
+import UserNotifications
 
 @main
 struct StakehubApp: App {
-    @State private var isActive = true
-
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var webViewStore = WebViewStore()
+    @StateObject private var deepLink    = DeepLinkManager.shared
+    
+    @State private var isActive: Bool = true
     var body: some Scene {
         WindowGroup {
             if isActive {
@@ -22,6 +27,8 @@ struct StakehubApp: App {
                     }
             } else {
                 ContentView()
+                    .environmentObject(webViewStore)
+                    .environmentObject(deepLink)
             }
         }
     }
