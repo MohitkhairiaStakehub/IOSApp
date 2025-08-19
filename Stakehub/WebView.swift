@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import SafariServices
 @preconcurrency import WebKit
-
+import MessageUI
 struct WebView: UIViewRepresentable {
     @Binding var webView: WKWebView
     let urlString: String
@@ -30,10 +30,14 @@ struct WebView: UIViewRepresentable {
         webView.scrollView.contentScaleFactor = UIScreen.main.scale
 
         if let url = URL(string: urlString), webView.url == nil {
-            var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.timeoutInterval = 30
-            webView.load(request)
+            if NetworkMonitor.shared.isOnline {
+                var request = URLRequest(url: url)
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+                request.timeoutInterval = 30
+                webView.load(request)
+            } else {
+                loadOfflinePage(into: webView)   // or self.loadOfflinePage(into: webView)
+            }
         } else {
             print("Invalid URL: \(urlString)")
         }
@@ -50,6 +54,16 @@ struct WebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         return Coordinator(self)
+    }
+    
+    // MARK: - Offline loader (shared by makeUIView & Coordinator)
+    private func loadOfflinePage(into webView: WKWebView) {
+        // Try Resources/offline/offline.html first, then just offline.html at bundle root
+        let candidate =
+            Bundle.main.url(forResource: "offline", withExtension: "html", subdirectory: "offline") ??
+            Bundle.main.url(forResource: "offline", withExtension: "html")
+        guard let url = candidate else { return }
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     }
     
     class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
@@ -70,6 +84,7 @@ struct WebView: UIViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: WebView
+        private var lastRequestedURL: URL? // remember where we tried to go
         // Optionally, keep a reference to the web view if needed.
 //        var webView: WKWebView?
         var documentPickerDelegate: DocumentPickerDelegate?
@@ -86,14 +101,30 @@ struct WebView: UIViewRepresentable {
             webView.evaluateJavaScript(kick, completionHandler: nil)
         }
 
+        // When a provisional navigation fails (DNS/connection/etc)
+        func webView(_ webView: WKWebView,
+                     didFailProvisionalNavigation navigation: WKNavigation!,
+                     withError error: Error) {
+            if isOfflineError(error) {
+                parent.loadOfflinePage(into: webView)
+            }
+        }
+        
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            if isOfflineError(error) {
+                        parent.loadOfflinePage(into: webView)
+            }
             print("Failed to load: \(error.localizedDescription)")
         }
+        
+        
 
         // Allow all navigation actions.
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            
+            lastRequestedURL = navigationAction.request.url
             decisionHandler(.allow)
         }
         
@@ -107,6 +138,20 @@ struct WebView: UIViewRepresentable {
             }
             return nil
         }
+        
+        private func isOfflineError(_ error: Error) -> Bool {
+            let ns = error as NSError
+            // Common offline cases:
+            return ns.domain == NSURLErrorDomain && (
+                ns.code == NSURLErrorNotConnectedToInternet ||
+                ns.code == NSURLErrorTimedOut ||
+                ns.code == NSURLErrorNetworkConnectionLost ||
+                ns.code == NSURLErrorCannotFindHost ||
+                ns.code == NSURLErrorCannotConnectToHost ||
+                ns.code == NSURLErrorDNSLookupFailed
+            )
+        }
+
        
         func webView(_ webView: WKWebView,
                      runOpenPanelWith parameters: Any,

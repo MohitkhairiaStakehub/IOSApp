@@ -13,12 +13,26 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
-            WebViewWrapper(webView: $webViewStore.webView, urlString: "https://testfrontend.stakehub.in")
+            WebView(webView: $webViewStore.webView, urlString: "https://testfrontend.stakehub.in")
         }
          // ➊ Handle warm/foreground taps
         .onReceive(NotificationCenter.default.publisher(for: .openDeepLink)) { note in
             if let url = note.object as? URL {
                 webViewStore.webView.load(URLRequest(url: url))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .networkStatusChanged)) { note in
+            guard let isOnline = note.object as? Bool, isOnline else { return }
+
+            // If we’re currently showing the offline file, go back to home or last URL
+            let showingOffline = webViewStore.webView.url?.lastPathComponent == "offline.html"
+            if showingOffline {
+                if let last = (webViewStore.webView.backForwardList.forwardList.last?.url)
+                    ?? (webViewStore.webView.backForwardList.backList.last?.url) {
+                    webViewStore.webView.load(URLRequest(url: last))
+                } else if let home = URL(string: "https://testfrontend.stakehub.in") {
+                    webViewStore.webView.load(URLRequest(url: home))
+                }
             }
         }
         // ➋ Handle cold-start case (event may have fired before this view existed)

@@ -1,0 +1,26 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Offline</title>
+  <style>
+    html,body{height:100%;margin:0;font-family:-apple-system,system-ui;}
+    .wrap{display:flex;align-items:center;justify-content:center;min-height:100%;text-align:center;padding:24px}
+    .card{max-width:420px}
+    h1{font-size:22px;margin:0 0 8px}
+    p{color:#666;margin:0 0 16px}
+    button{border:0;border-radius:10px;padding:12px 16px;font-size:16px;background:#0a84ff;color:#fff}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>You’re offline</h1>
+      <p>Please connect to the internet and try again.</p>
+      <button onclick="window.location.reload()">Try again</button>
+    </div>
+  </div>
+</body>
+</html>
