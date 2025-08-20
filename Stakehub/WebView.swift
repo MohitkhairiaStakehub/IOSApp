@@ -82,7 +82,7 @@ struct WebView: UIViewRepresentable {
         }
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, MFMailComposeViewControllerDelegate {
         var parent: WebView
         private var lastRequestedURL: URL? // remember where we tried to go
         // Optionally, keep a reference to the web view if needed.
@@ -90,6 +90,15 @@ struct WebView: UIViewRepresentable {
         var documentPickerDelegate: DocumentPickerDelegate?
         init(_ parent: WebView) {
             self.parent = parent
+        }
+        
+        // Helper to present a VC from the current window scene
+        private func present(_ vc: UIViewController) {
+            guard
+                let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                let root = scene.windows.first?.rootViewController
+            else { return }
+            root.present(vc, animated: true)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -119,13 +128,103 @@ struct WebView: UIViewRepresentable {
         
         
 
-        // Allow all navigation actions.
+        // Allow/handle external schemes and special links
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            
-            lastRequestedURL = navigationAction.request.url
+            print("URL Clicked: \(navigationAction.request.url?.absoluteString ?? "Unknown")")
+
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.allow)
+                return
+            }
+
+            // First handle system schemes (phone, sms, facetime, mail)
+            if let scheme = url.scheme?.lowercased() {
+                switch scheme {
+                case "tel", "telprompt", "sms", "facetime", "facetime-audio":
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                    decisionHandler(.cancel)
+                    return
+                case "mailto":
+                    if MFMailComposeViewController.canSendMail() {
+                        let composer = MFMailComposeViewController()
+                        composer.mailComposeDelegate = self
+                        if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                            if let addr = comps.path.removingPercentEncoding, !addr.isEmpty {
+                                composer.setToRecipients([addr])
+                            }
+                            if let q = comps.queryItems {
+                                if let subject = q.first(where: { $0.name == "subject" })?.value?.removingPercentEncoding {
+                                    composer.setSubject(subject)
+                                }
+                                if let body = q.first(where: { $0.name == "body" })?.value?.removingPercentEncoding {
+                                    composer.setMessageBody(body, isHTML: false)
+                                }
+                            }
+                        }
+                        present(composer)
+                    } else {
+                        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                    }
+                    decisionHandler(.cancel)
+                    return
+                default:
+                    break
+                }
+            }
+
+            // Kick JS so page gets the token ASAP
+            let kick = """
+                if (window.__fcm_token) {
+                  window.dispatchEvent(new CustomEvent('fcm-token-ready', { detail: { platform: 'ios', token: window.__fcm_token } }));
+                }
+                """
+            webView.evaluateJavaScript(kick, completionHandler: nil)
+
+            let urlString = url.absoluteString
+
+            // Social/app deep links
+            if urlString.contains("https://www.instagram.com/stakehub.in/") {
+                openApp(urlScheme: "instagram://profile/stakehub.in", fallbackURL: url)
+                decisionHandler(.cancel)
+                return
+            }
+            if urlString.contains("https://www.linkedin.com/company/stakehub-infotech/") {
+                openApp(urlScheme: "linkedin://company/stakehub-infotech", fallbackURL: url)
+                decisionHandler(.cancel)
+                return
+            }
+            if urlString.contains("https://www.youtube.com/@stakehub/") {
+                openApp(urlScheme: "youtube://www.youtube.com/@stakehub/", fallbackURL: url)
+                decisionHandler(.cancel)
+                return
+            }
+
+            // Open PDFs externally
+            if urlString.lowercased().hasSuffix(".pdf") {
+                UIApplication.shared.open(url)
+                decisionHandler(.cancel)
+                return
+            }
+
+            // Specific external link
+            if urlString.contains("https://g.page/r/CWAgUdxaj-4eEBM/review") {
+                UIApplication.shared.open(url)
+                decisionHandler(.cancel)
+                return
+            }
+
+            // Otherwise allow the navigation in the web view
             decisionHandler(.allow)
+        }
+        
+        private func openApp(urlScheme: String, fallbackURL: URL) {
+            if let appURL = URL(string: urlScheme), UIApplication.shared.canOpenURL(appURL) {
+                UIApplication.shared.open(appURL, options: [:], completionHandler: nil)
+            } else {
+                UIApplication.shared.open(fallbackURL, options: [:], completionHandler: nil)
+            }
         }
         
         // Handle new window requests (e.g., target="_blank")
@@ -223,6 +322,13 @@ struct WebView: UIViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 refreshControl.endRefreshing()
             }
+        }
+        
+        // MARK: - MFMailComposeViewControllerDelegate
+        func mailComposeController(_ controller: MFMailComposeViewController,
+                                   didFinishWith result: MFMailComposeResult,
+                                   error: Error?) {
+            controller.dismiss(animated: true)
         }
     }
 }

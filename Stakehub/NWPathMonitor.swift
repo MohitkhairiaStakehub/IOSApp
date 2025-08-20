@@ -17,14 +17,17 @@ final class NetworkMonitor {
     @Published private(set) var isOnline: Bool = true
 
     private init() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            self?.isOnline = (path.status == .satisfied)
-            NotificationCenter.default.post(
-                name: .networkStatusChanged,
-                object: self?.isOnline
-            )
-        }
-        monitor.start(queue: queue)
+            monitor.pathUpdateHandler = { [weak self] path in
+                let online = (path.status == .satisfied)
+                DispatchQueue.main.async {
+                    self?.isOnline = online
+                    NotificationCenter.default.post(
+                        name: .networkStatusChanged,
+                        object: online
+                    )
+                }
+            }
+            monitor.start(queue: queue)
     }
 }
 
