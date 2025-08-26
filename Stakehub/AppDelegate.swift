@@ -23,7 +23,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
-
+        if let val = Bundle.main.infoDictionary?["NSFaceIDUsageDescription"] as? String {
+            print("NSFaceIDUsageDescription FOUND:", val)
+        } else {
+            print("NSFaceIDUsageDescription MISSING in main bundle!")
+        }
         Messaging.messaging().delegate = self
         
         // 👇 If the app was launched by tapping a push, extract click_url here too
@@ -36,7 +40,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         
         return true
     }
-
+    
     // APNs token -> FCM
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

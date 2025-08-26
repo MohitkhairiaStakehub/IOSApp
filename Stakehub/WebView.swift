@@ -22,7 +22,9 @@ struct WebView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
 //        webView.configuration.websiteDataStore = WKWebsiteDataStore.default()
-
+        // JS -> native bridge
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "authState")
+        webView.configuration.userContentController.add(context.coordinator, name: "authState")
         // ✅ Force High-Resolution Rendering
         webView.contentScaleFactor = UIScreen.main.scale
         webView.isOpaque = false
@@ -82,7 +84,7 @@ struct WebView: UIViewRepresentable {
         }
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, MFMailComposeViewControllerDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, MFMailComposeViewControllerDelegate, WKScriptMessageHandler {
         var parent: WebView
         private var lastRequestedURL: URL? // remember where we tried to go
         // Optionally, keep a reference to the web view if needed.
@@ -218,7 +220,15 @@ struct WebView: UIViewRepresentable {
             // Otherwise allow the navigation in the web view
             decisionHandler(.allow)
         }
-        
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard message.name == "authState" else { return }
+            if let body = message.body as? [String: Any],
+               let loggedIn = body["loggedIn"] as? Bool {
+                AuthPrefs.isLoggedIn = loggedIn
+                print("[AuthPrefs] isLoggedIn =", loggedIn)
+            }
+        }
         private func openApp(urlScheme: String, fallbackURL: URL) {
             if let appURL = URL(string: urlScheme), UIApplication.shared.canOpenURL(appURL) {
                 UIApplication.shared.open(appURL, options: [:], completionHandler: nil)
