@@ -29,6 +29,7 @@ struct StakehubApp: App {
                 ContentView()
                     .environmentObject(webViewStore)
                     .environmentObject(deepLink)
+                    .preferredColorScheme(.light)
             }
         }
     }
